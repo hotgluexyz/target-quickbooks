@@ -141,7 +141,7 @@ def get_entities(entity_type, security_context, key="Name"):
 
 def load_journal_entries(config, accounts, classes, customers):
     # Get input path
-    input_path = config['input_path']
+    input_path = f"{config['input_path']}/JournalEntries.csv"
     # Read the passed CSV
     df = pd.read_csv(input_path)
     # Verify it has required columns
