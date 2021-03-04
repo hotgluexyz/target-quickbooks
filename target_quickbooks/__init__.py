@@ -8,7 +8,7 @@ import pandas as pd
 import logging
 
 logger = logging.getLogger("target-quickbooks")
-logging.basicConfig(level=logging.DEBUG, format='%(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 def load_json(path):
     with open(path) as f:
@@ -256,7 +256,7 @@ def post_journal_entries(journals, security_context):
 
     for ri in response_items:
         if ri.get("Fault") is not None:
-            logger.warn(f"Failure creating entity {json.dumps(ri)}")
+            logger.error(f"Failure creating entity {json.dumps(ri)}")
 
     return response_items
 
