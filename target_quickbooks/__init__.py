@@ -6,6 +6,7 @@ import requests
 import base64
 import pandas as pd
 import logging
+import re
 
 logger = logging.getLogger("target-quickbooks")
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -134,7 +135,7 @@ def get_entities(entity_type, security_context, key="Name"):
 
         offset += max
 
-    logger.debug(f"[get_entities]: Found {len(entities)} accounts {entity_type}.")
+    logger.debug(f"[get_entities]: Found {len(entities)} {entity_type}.")
 
     return entities
 
@@ -157,7 +158,7 @@ def load_journal_entries(config, accounts, classes, customers):
     def build_lines(x):
         # Get the journal entry id
         je_id = x['Journal Entry Id'].iloc[0]
-        print(f"Converting {je_id}...")
+        logger.info(f"Converting {je_id}...")
         line_items = []
 
         # Create line items
@@ -168,13 +169,19 @@ def load_journal_entries(config, accounts, classes, customers):
             }
 
             # Get the Quickbooks Account Ref
+            acct_num = row['Account Number']
             acct_name = row['Account Name']
-            acct_ref = accounts.get(acct_name, {}).get("Id")
+            acct_ref = accounts.get(acct_num, {}).get("Id")
+            # TODO: Fall back to Account Name matching logic
 
             if acct_ref is not None:
                 je_detail["AccountRef"] = {
                     "value": acct_ref
                 }
+            else:
+                err_msg = f"Account is missing on Journal Entry! Name={acct_name} No={acct_num}"
+                logger.error(err_msg)
+                raise Exception(err_msg)
 
             # Get the Quickbooks Class Ref
             class_name = row['Class']
@@ -184,6 +191,8 @@ def load_journal_entries(config, accounts, classes, customers):
                 je_detail["ClassRef"] = {
                     "value": class_ref
                 }
+            else:
+                logger.warning(f"Class is missing on Journal Entry! Name={class_name}")
 
             # Get the Quickbooks Customer Ref
             customer_name = row['Customer Name']
@@ -196,6 +205,8 @@ def load_journal_entries(config, accounts, classes, customers):
                     },
                     "Type": "Customer"
                 }
+            else:
+                logger.warning(f"Customer is missing on Journal Entry! Name={customer_name}")
 
             # Create the line item
             line_items.append({
@@ -251,12 +262,13 @@ def post_journal_entries(journals, security_context):
     )
 
     response = r.json()
-    logger.debug(f"CREATE Journal Entries -> {json.dumps(response)}")
     response_items = response.get("BatchItemResponse")
 
     for ri in response_items:
         if ri.get("Fault") is not None:
-            logger.error(f"Failure creating entity {json.dumps(ri)}")
+            m = re.search("[0-9]+$", ri.get("bId"))
+            index = int(m.group(0))
+            logger.error(f"Failure creating entity error=[{json.dumps(ri)}] request=[{batch_requests[index]}]")
 
     return response_items
 
@@ -266,7 +278,7 @@ def upload(config):
     security_context = login(config)
 
     # Load Active Classes, Customers, Accounts
-    accounts = get_entities("Account", security_context)
+    accounts = get_entities("Account", security_context, key="AcctNum")
     customers = get_entities("Customer", security_context, key="DisplayName")
     classes = get_entities("Class", security_context)
 
