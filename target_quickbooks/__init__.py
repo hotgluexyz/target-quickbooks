@@ -167,6 +167,7 @@ def load_journal_entries(config, accounts, classes, customers):
         sys.exit(1)
 
     journal_entries = []
+    errored = False
 
     def build_lines(x):
         # Get the journal entry id
@@ -191,9 +192,8 @@ def load_journal_entries(config, accounts, classes, customers):
                     "value": acct_ref
                 }
             else:
-                err_msg = f"Account is missing on Journal Entry {je_id}! Name={acct_name} No={acct_num}"
-                logger.error(err_msg)
-                raise Exception(err_msg)
+                errored = True
+                logger.error(f"Account is missing on Journal Entry {je_id}! Name={acct_name} No={acct_num}")
 
             # Get the Quickbooks Class Ref
             class_name = row['Class']
@@ -238,8 +238,11 @@ def load_journal_entries(config, accounts, classes, customers):
     # Build the entries
     df.groupby("Journal Entry Id").apply(build_lines)
 
+    if errored:
+        raise Exception("Building QBO JournalEntries failed!")
+
     # Print journal entries
-    logger.debug(f"Loaded {len(journal_entries)} journal entries to post")
+    logger.info(f"Loaded {len(journal_entries)} journal entries to post")
 
     return journal_entries
 
