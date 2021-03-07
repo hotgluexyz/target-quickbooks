@@ -134,7 +134,7 @@ def get_entities(entity_type, security_context, key="Name"):
 
         offset += max
 
-    logger.debug(f"get_entities -> {json.dumps(entities)}")
+    logger.debug(f"[get_entities]: Found {len(entities)} accounts {entity_type}.")
 
     return entities
 
