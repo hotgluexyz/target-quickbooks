@@ -182,7 +182,7 @@ def load_journal_entries(config, accounts, classes, customers):
             }
 
             # Get the Quickbooks Account Ref
-            acct_num = row['Account Number']
+            acct_num = str(row['Account Number'])
             acct_name = row['Account Name']
             acct_ref = accounts.get(acct_num, accounts.get(acct_name, {})).get("Id")
 
@@ -191,7 +191,7 @@ def load_journal_entries(config, accounts, classes, customers):
                     "value": acct_ref
                 }
             else:
-                err_msg = f"Account is missing on Journal Entry! Name={acct_name} No={acct_num}"
+                err_msg = f"Account is missing on Journal Entry {je_id}! Name={acct_name} No={acct_num}"
                 logger.error(err_msg)
                 raise Exception(err_msg)
 
@@ -204,7 +204,7 @@ def load_journal_entries(config, accounts, classes, customers):
                     "value": class_ref
                 }
             else:
-                logger.warning(f"Class is missing on Journal Entry! Name={class_name}")
+                logger.warning(f"Class is missing on Journal Entry {je_id}! Name={class_name}")
 
             # Get the Quickbooks Customer Ref
             customer_name = row['Customer Name']
@@ -218,7 +218,7 @@ def load_journal_entries(config, accounts, classes, customers):
                     "Type": "Customer"
                 }
             else:
-                logger.warning(f"Customer is missing on Journal Entry! Name={customer_name}")
+                logger.warning(f"Customer is missing on Journal Entry {je_id}! Name={customer_name}")
 
             # Create the line item
             line_items.append({
@@ -239,7 +239,7 @@ def load_journal_entries(config, accounts, classes, customers):
     df.groupby("Journal Entry Id").apply(build_lines)
 
     # Print journal entries
-    logger.debug(json.dumps(journal_entries))
+    logger.debug(f"Loaded {len(journal_entries)} journal entries to post")
 
     return journal_entries
 
@@ -299,6 +299,8 @@ def upload(config, args):
 
     # Post the journal entries to Quickbooks
     post_journal_entries(journals, security_context)
+
+    logger.info("Posting process has completed!")
 
 
 def main():
