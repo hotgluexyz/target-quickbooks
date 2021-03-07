@@ -16,6 +16,11 @@ def load_json(path):
         return json.load(f)
 
 
+def write_json_file(filename, content):
+    with open(filename, 'w') as f:
+        json.dump(content, f, indent=4)
+
+
 def parse_args():
     '''Parse standard command-line args.
     Parses the command-line arguments mentioned in the SPEC and the
@@ -59,7 +64,7 @@ def establish_endpoints(config):
     }
 
 
-def login(config):
+def login(config, config_path):
     client_id = config['client_id']
     client_secret = config['client_secret']
     refresh_token = config['refresh_token']
@@ -81,17 +86,19 @@ def login(config):
     security_context.update(endpoints)
     logger.info(f"Successful login -> {json.dumps(security_context)}")
 
-    # TODO: Update refresh token if it was changed
-    # if (security_context['refresh_token'] != refresh_token):
-    #     # TODO: Save the file
-    #     config['refresh_token'] = security_context['refresh_token']
-    # else:
-    #     logger.info(`Same refresh token was received from QuickBooks auth service, no need to update the config in hotglue.`);
+    # Update refresh token if it was changed
+    if (security_context['refresh_token'] != refresh_token):
+        # Save the file
+        config['refresh_token'] = security_context['refresh_token']
+        logger.info("New refresh token was received from QuickBooks, updating local config")
+        write_json_file(config_path, config)
+    else:
+        logger.info("Same refresh token was received from QuickBooks auth service, no need to update the config in hotglue.")
 
     return security_context
 
 
-def get_entities(entity_type, security_context, key="Name"):
+def get_entities(entity_type, security_context, key="Name", fallback_key="Name"):
     base_url = security_context['base_url']
     access_token = security_context['access_token']
     offset = 0
@@ -127,7 +134,13 @@ def get_entities(entity_type, security_context, key="Name"):
 
         # Append the results
         for record in records:
-            entities[record[key]] = record
+            entity_key = record.get(key, record.get(fallback_key))
+            # Ignore None keys
+            if entity_key is None:
+                logger.warning(f"Failed to parse record f{json.dumps(record)}")
+                continue
+
+            entities[entity_key] = record
 
         # We're done - exit loop
         if count < max:
@@ -171,8 +184,7 @@ def load_journal_entries(config, accounts, classes, customers):
             # Get the Quickbooks Account Ref
             acct_num = row['Account Number']
             acct_name = row['Account Name']
-            acct_ref = accounts.get(acct_num, {}).get("Id")
-            # TODO: Fall back to Account Name matching logic
+            acct_ref = accounts.get(acct_num, accounts.get(acct_name, {})).get("Id")
 
             if acct_ref is not None:
                 je_detail["AccountRef"] = {
@@ -273,9 +285,9 @@ def post_journal_entries(journals, security_context):
     return response_items
 
 
-def upload(config):
-    # Login + TODO: update tap config with new refresh token if necessary
-    security_context = login(config)
+def upload(config, args):
+    # Login update tap config with new refresh token if necessary
+    security_context = login(config, args.config_path)
 
     # Load Active Classes, Customers, Accounts
     accounts = get_entities("Account", security_context, key="AcctNum")
@@ -293,8 +305,8 @@ def main():
     # Parse command line arguments
     args = parse_args()
 
-    # Upload the 
-    upload(args.config)
+    # Upload the new QBO data
+    upload(args.config, args)
 
 
 if __name__ == "__main__":
