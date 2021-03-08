@@ -229,12 +229,20 @@ def load_journal_entries(config, accounts, classes, customers):
             })
 
         # Create the entry
-        journal_entries.append({
+        entry = {
             'TxnDate': row['Transaction Date'],
             'DocNumber': je_id,
             'Line': line_items
-        })
-        
+        }
+
+        # Append the currency if provided
+        if row.get('Currency') is not None:
+            entry['CurrencyRef'] = {
+                'value': row['Currency']
+            }
+
+        journal_entries.append(entry)
+
     # Build the entries
     df.groupby("Journal Entry Id").apply(build_lines)
 
