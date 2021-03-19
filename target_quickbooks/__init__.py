@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import json
 import sys
 import argparse
@@ -273,7 +274,7 @@ def post_journal_entries(journals, security_context):
         )
 
     # Send the request
-    r = requests.post(url, 
+    r = requests.post(url,
         data=json.dumps({
             "BatchItemRequest": batch_requests
         }),
@@ -296,10 +297,7 @@ def post_journal_entries(journals, security_context):
     return response_items
 
 
-def upload(config, args):
-    # Login update tap config with new refresh token if necessary
-    security_context = login(config, args.config_path)
-
+def upload_journals(config, security_context):
     # Load Active Classes, Customers, Accounts
     accounts = get_entities("Account", security_context, key="AcctNum")
     customers = get_entities("Customer", security_context, key="DisplayName")
@@ -310,6 +308,88 @@ def upload(config, args):
 
     # Post the journal entries to Quickbooks
     post_journal_entries(journals, security_context)
+
+
+def create_class(security_context, cl):
+    base_url = security_context['base_url']
+    access_token = security_context['access_token']
+    url = f"{base_url}/class?minorversion=45"
+
+    # Send the request
+    r = requests.post(url,
+        data=json.dumps(cl),
+        headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+    )
+
+    response = r.json()
+    return response
+
+
+def create_subclass(security_context, classes, parent_name, parent, sub):
+    for cl in sub:
+        cl_name = cl["Name"]
+        cl_sub = cl.get("Sub", [])
+        full_name = f"{parent_name}:{cl_name}"
+
+        if classes.get(full_name) is None:
+            # Create the class
+            cl_data = create_class(security_context, {
+                'Name': cl_name,
+                'ParentRef': {
+                    'value': parent
+                }
+            })["Class"]
+        else:
+            # Get the class
+            cl_data = classes.get(full_name)
+
+        # Recursively create sub classes, if necessary
+        create_subclass(security_context, classes, full_name, cl_data["Id"], cl_sub)
+
+
+def upload_classes(config, security_context):
+    # Load Active Classes
+    classes = get_entities("Class", security_context, key="FullyQualifiedName")
+
+    # Get input path
+    input_path = f"{config['input_path']}/Classes.json"
+    # Read the classes
+    new_cl = load_json(input_path)
+
+    for cl in new_cl:
+        cl_name = cl["Name"]
+        cl_sub = cl.get("Sub", [])
+
+        if classes.get(cl_name) is None:
+            # Create the class
+            cl_data = create_class(security_context, {
+                'Name': cl_name,
+            })["Class"]
+        else:
+            # Get the class
+            cl_data = classes.get(cl_name)
+
+        # Recursively create any sub classes, if necessary
+        create_subclass(security_context, classes, cl_name, cl_data["Id"], cl_sub)
+
+
+def upload(config, args):
+    # Login update tap config with new refresh token if necessary
+    security_context = login(config, args.config_path)
+
+    if os.path.exists(f"{config['input_path']}/Classes.json"):
+        logger.info("Found Classes.json, uploading...")
+        upload_classes(config, security_context)
+        logger.info("Classes.json uploaded!")
+
+    if os.path.exists(f"{config['input_path']}/JournalEntries.csv"):
+        logger.info("Found JournalEntries.csv, uploading...")
+        upload_journals(config, security_context)
+        logger.info("JournalEntries.csv uploaded!")
 
     logger.info("Posting process has completed!")
 
