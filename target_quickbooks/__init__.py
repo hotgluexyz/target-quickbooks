@@ -256,6 +256,23 @@ def load_journal_entries(config, accounts, classes, customers):
     return journal_entries
 
 
+def make_batch_request(url, access_token, batch_requests):
+    # Send the request
+    r = requests.post(url,
+        data=json.dumps({
+            "BatchItemRequest": batch_requests
+        }),
+        headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+    )
+
+    response = r.json()
+    return response.get("BatchItemResponse")
+
+
 def post_journal_entries(journals, security_context):
     base_url = security_context['base_url']
     access_token = security_context['access_token']
@@ -273,28 +290,42 @@ def post_journal_entries(journals, security_context):
             }
         )
 
-    # Send the request
-    r = requests.post(url,
-        data=json.dumps({
-            "BatchItemRequest": batch_requests
-        }),
-        headers={
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {access_token}'
-        }
-    )
+    # Do create batch requests
+    response_items = make_batch_request(url, access_token, batch_requests)
 
-    response = r.json()
-    response_items = response.get("BatchItemResponse")
+    posted_journals = []
+    failed = False
 
     for ri in response_items:
         if ri.get("Fault") is not None:
             m = re.search("[0-9]+$", ri.get("bId"))
             index = int(m.group(0))
             logger.error(f"Failure creating entity error=[{json.dumps(ri)}] request=[{batch_requests[index]}]")
+            failed = True
+        elif ri.get("JournalEntry") is not None:
+            je = ri.get("JournalEntry")
+            # Cache posted journal ids to delete them in event of failure
+            posted_journals.append({
+                'Id': je.get("Id"),
+                'SyncToken': je.get("SyncToken")
+            })
 
-    return response_items
+    if failed:
+        batch_requests = []
+        # In the event of failure, we need to delete the posted journals
+        for i, je in enumerate(posted_journals):
+            batch_requests.append(
+                {
+                    "bId": f"bid{i}",
+                    "operation": "delete",
+                    "JournalEntry": je
+                }
+            )
+
+        # Do delete batch requests
+        logger.info("Deleting any posted journal entries...")
+        response = make_batch_request(url, access_token, batch_requests)
+        logger.debug(json.dumps(response))
 
 
 def upload_journals(config, security_context):
