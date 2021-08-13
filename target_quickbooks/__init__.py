@@ -270,7 +270,17 @@ def make_batch_request(url, access_token, batch_requests):
     )
 
     response = r.json()
+
+    if response.get("Fault") is not None:
+        logger.error(response)
+
     return response.get("BatchItemResponse")
+
+
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 
 def post_journal_entries(journals, security_context):
@@ -290,8 +300,13 @@ def post_journal_entries(journals, security_context):
             }
         )
 
-    # Do create batch requests
-    response_items = make_batch_request(url, access_token, batch_requests)
+    # Split batches into size 30
+    batches = chunks(batch_requests, 30)
+    response_items = []
+
+    # Run all batches
+    for batch in batches:
+        response_items.extend(make_batch_request(url, access_token, batch))
 
     posted_journals = []
     failed = False
