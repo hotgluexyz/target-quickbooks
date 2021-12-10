@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='target-quickbooks',
-    version='1.0.9',
+    version='1.0.10',
     description='hotglue target for exporting data to Quickbooks API',
     author='hotglue',
     url='https://hotglue.xyz',

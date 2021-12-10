@@ -99,7 +99,7 @@ def login(config, config_path):
     return security_context
 
 
-def get_entities(entity_type, security_context, key="Name", fallback_key="Name"):
+def get_entities(entity_type, security_context, key="Name", fallback_key="Name", check_active=True):
     base_url = security_context['base_url']
     access_token = security_context['access_token']
     offset = 0
@@ -107,7 +107,10 @@ def get_entities(entity_type, security_context, key="Name", fallback_key="Name")
     entities = {}
 
     while True:
-        query = f"select * from {entity_type} where Active=true STARTPOSITION {offset} MAXRESULTS {max}"
+        query = f"select * from {entity_type}"
+        if check_active:
+            query = query + " where Active=true"
+        query = query + f" STARTPOSITION {offset} MAXRESULTS {max}"
         url = f"{base_url}/query?query={query}&minorversion=45"
 
         logger.info(f"Fetch {entity_type}; url={url}; query {query}")
@@ -423,6 +426,40 @@ def upload_classes(config, security_context):
         create_subclass(security_context, classes, cl_name, cl_data["Id"], cl_sub)
 
 
+def create_invoice(security_context, invoice):
+    base_url = security_context['base_url']
+    access_token = security_context['access_token']
+    url = f"{base_url}/invoice?minorversion=45"
+
+    # Send the request
+    r = requests.post(url,
+        data=json.dumps(invoice),
+        headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+    )
+
+    response = r.json()
+    return response
+
+
+
+def upload_invoices(config, security_context):
+    # Load Active invoices
+    invoices = get_entities("Invoice", security_context, key="FullyQualifiedName", check_active=False)
+    # Get input path
+    input_path = f"{config['input_path']}/Invoices.json"
+    # Read the invoices
+    new_invoice = load_json(input_path)
+
+    for invoice in new_invoice:
+        if invoice.get("Line"):
+            # Create the class
+            create_invoice(security_context, invoice)
+
+
 def upload(config, args):
     # Login update tap config with new refresh token if necessary
     security_context = login(config, args.config_path)
@@ -431,6 +468,11 @@ def upload(config, args):
         logger.info("Found Classes.json, uploading...")
         upload_classes(config, security_context)
         logger.info("Classes.json uploaded!")
+    
+    if os.path.exists(f"{config['input_path']}/Invoices.json"):
+        logger.info("Found Invoices.json, uploading...")
+        upload_invoices(config, security_context)
+        logger.info("Invoices.json uploaded!")
 
     if os.path.exists(f"{config['input_path']}/JournalEntries.csv"):
         logger.info("Found JournalEntries.csv, uploading...")
