@@ -445,19 +445,52 @@ def create_invoice(security_context, invoice):
     return response
 
 
-
 def upload_invoices(config, security_context):
     # Load Active invoices
-    invoices = get_entities("Invoice", security_context, key="FullyQualifiedName", check_active=False)
+    # invoices = get_entities("Invoice", security_context, key="Name", check_active=True)
+    customers = get_entities("Customer", security_context, key="DisplayName")
+    items = get_entities("Item", security_context, key="DisplayName")
     # Get input path
     input_path = f"{config['input_path']}/Invoices.json"
     # Read the invoices
     new_invoice = load_json(input_path)
 
-    for invoice in new_invoice:
+    for i, invoice in enumerate(new_invoice):
+
+        customer = invoice.get('CustomerRef')
+        if not customer:
+            logger.warning(f"Invoice {i} missing CustomerRef, ignoring record.")
+            continue
+        customer_name = customer.get("name")
+        if not customer_name:
+            logger.warning(f"Invoice {i} missing CustomerRef.name, ignoring record.")
+            continue
+
+        customer_data = customers.get(customer_name)
+        if not customer_data:
+            logger.warning(f"Customer: {customer_name} does not exist, ignoring record.")
+            continue
+
+        invoice['CustomerRef']["value"] = customer_data.get("Id")
+
         if invoice.get("Line"):
-            # Create the class
+
+            for item in invoice.get("Line"):
+                try:
+                    item_name = item["SalesItemLineDetail"]["ItemRef"]["name"]
+                except:
+                    logger.warning(f"Invoice {i} missing SalesItemLineDetail.ItemRef.name, ignoring invoice.")
+                    continue
+                item_data = items.get(item_name)
+                if not item_data:
+                    logger.warning(f"Item: {item_data} does not exist, ignoring invoice that contains it.")
+                    continue
+                item["SalesItemLineDetail"]["ItemRef"]["value"] = item_data.get("Id")
+
             create_invoice(security_context, invoice)
+
+        else:
+            logger.warning(f"Invoice {i} missing Line, ignoring record.")
 
 
 def upload(config, args):
