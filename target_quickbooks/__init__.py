@@ -426,6 +426,152 @@ def upload_classes(config, security_context):
         create_subclass(security_context, classes, cl_name, cl_data["Id"], cl_sub)
 
 
+def replace_ref(record, entities, field):
+    for key, value in record.items():
+        if key==field:
+            record[key] = {"value": entities.get(value, {}).get("Id")}
+        elif isinstance(value, list):
+            record[key] = [replace_ref(v, entities, field) for v in value]
+        elif isinstance(value, dict):
+            record[key] = replace_ref(value, entities, field)
+        else:
+            record[key] = value
+    return record
+
+
+def upload_purchases(config, security_context):
+    # Get input path
+    input_path = f"{config['input_path']}/Purchase.json"
+    new_purchases = load_json(input_path)
+
+    accounts = get_entities("Account", security_context, key="AcctNum")
+
+    base_url = security_context['base_url']
+    access_token = security_context['access_token']
+    url = f"{base_url}/purchase?minorversion=45"
+
+    headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+
+    for purchase in new_purchases:
+        purchase = replace_ref(purchase, accounts, "AccountRef")
+        
+        try:
+            response = requests.post(url, data=json.dumps(purchase), headers=headers)
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise SystemExit(response.text)
+
+
+def upload_customers(config, security_context):
+    input_path = f"{config['input_path']}/Customer.json"
+    new_customers = load_json(input_path)
+
+    base_url = security_context['base_url']
+    access_token = security_context['access_token']
+    url = f"{base_url}/customer?minorversion=45"
+
+    headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+
+    for customer in new_customers:
+        try:
+            response = requests.post(url, data=json.dumps(customer), headers=headers)
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise SystemExit(response.text)
+
+
+def upload_items(config, security_context):
+    input_path = f"{config['input_path']}/Item.json"
+    new_items = load_json(input_path)
+
+    accounts = get_entities("Account", security_context, key="AcctNum")
+
+    base_url = security_context['base_url']
+    access_token = security_context['access_token']
+    url = f"{base_url}/item?minorversion=45"
+
+    headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+
+    for item in new_items:
+        item = replace_ref(item, accounts, "IncomeAccountRef")
+        item = replace_ref(item, accounts, "AssetAccountRef")
+        item = replace_ref(item, accounts, "ExpenseAccountRef")
+        try:
+            response = requests.post(url, data=json.dumps(item), headers=headers)
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise SystemExit(response.text)
+
+
+def upload_sales_receipt(config, security_context):
+    input_path = f"{config['input_path']}/SalesReceipt.json"
+    new_sales_receipt = load_json(input_path)
+
+    items = get_entities("Item", security_context, key="DisplayName")
+
+    base_url = security_context['base_url']
+    access_token = security_context['access_token']
+    url = f"{base_url}/salesreceipt?minorversion=45"
+
+    headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+
+    for sales_receipt in new_sales_receipt:
+        sales_receipt = replace_ref(sales_receipt, items, "ItemRef")
+        try:
+            response = requests.post(url, data=json.dumps(sales_receipt), headers=headers)
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise SystemExit(response.text)
+
+
+def upload_purchase_orders(config, security_context):
+    input_path = f"{config['input_path']}/PurchaseOrder.json"
+    new_purchase_orders = load_json(input_path)
+
+    accounts = get_entities("Account", security_context, key="AcctNum")
+    customers = get_entities("Customer", security_context, key="DisplayName")
+    items = get_entities("Item", security_context, key="DisplayName")
+    vendors = get_entities("Vendor", security_context, key="DisplayName")
+
+    base_url = security_context['base_url']
+    access_token = security_context['access_token']
+    url = f"{base_url}/purchaseorder?minorversion=45"
+
+    headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        }
+
+    for purchase_order in new_purchase_orders:
+        purchase_order = replace_ref(purchase_order, vendors, "VendorRef")
+        purchase_order = replace_ref(purchase_order, customers, "ShipTo")
+        purchase_order = replace_ref(purchase_order, accounts, "APAccountRef")
+        purchase_order = replace_ref(purchase_order, customers, "CustomerRef")
+        purchase_order = replace_ref(purchase_order, items, "ItemRef")
+        try:
+            response = requests.post(url, data=json.dumps(purchase_order), headers=headers)
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise SystemExit(response.text)
+
+
 def create_invoice(security_context, invoice):
     base_url = security_context['base_url']
     access_token = security_context['access_token']
@@ -511,6 +657,31 @@ def upload(config, args):
         logger.info("Found JournalEntries.csv, uploading...")
         upload_journals(config, security_context)
         logger.info("JournalEntries.csv uploaded!")
+
+    if os.path.exists(f"{config['input_path']}/Purchase.json"):
+        logger.info("Found Purchase.json, uploading...")
+        upload_purchases(config, security_context)
+        logger.info("Purchase.json uploaded!")
+
+    if os.path.exists(f"{config['input_path']}/Customer.json"):
+        logger.info("Found Customer.json, uploading...")
+        upload_customers(config, security_context)
+        logger.info("Customer.json uploaded!")
+
+    if os.path.exists(f"{config['input_path']}/Item.json"):
+        logger.info("Found Item.json, uploading...")
+        upload_items(config, security_context)
+        logger.info("Item.json uploaded!")
+    
+    if os.path.exists(f"{config['input_path']}/PurchaseOrder.json"):
+        logger.info("Found PurchaseOrder.json, uploading...")
+        upload_purchase_orders(config, security_context)
+        logger.info("PurchaseOrder.json uploaded!")
+
+    if os.path.exists(f"{config['input_path']}/SalesReceipt.json"):
+        logger.info("Found SalesReceipt.json, uploading...")
+        upload_sales_receipt(config, security_context)
+        logger.info("SalesReceipt.json uploaded!")
 
     logger.info("Posting process has completed!")
 
