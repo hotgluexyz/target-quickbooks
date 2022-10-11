@@ -157,7 +157,7 @@ def get_entities(entity_type, security_context, key="Name", fallback_key="Name",
     return entities
 
 
-def load_journal_entries(config, accounts, classes, customers):
+def load_journal_entries(config, accounts, classes, customers, vendors):
     # Get input path
     input_path = f"{config['input_path']}/JournalEntries.csv"
     # Read the passed CSV
@@ -223,6 +223,21 @@ def load_journal_entries(config, accounts, classes, customers):
                 }
             else:
                 logger.warning(f"Customer is missing on Journal Entry {je_id}! Name={customer_name}")
+
+            # Get the Quickbooks Vendor Ref
+            if 'Vendor Name' in row:
+                vendor_name = row['Vendor Name']
+                vendor_ref = vendors.get(vendor_name, {}).get("Id")
+
+                if vendor_ref is not None:
+                    je_detail["Entity"] = {
+                        "EntityRef": {
+                            "value": vendor_ref
+                        },
+                        "Type": "Vendor"
+                    }
+                else:
+                    logger.warning(f"Vendor is missing on Journal Entry {je_id}! Name={vendor_name}")
 
             # Create the line item
             line_items.append({
@@ -350,10 +365,11 @@ def upload_journals(config, security_context):
     # Load Active Classes, Customers, Accounts
     accounts = get_entities("Account", security_context, key="AcctNum")
     customers = get_entities("Customer", security_context, key="DisplayName")
+    vendors = get_entities("Vendor", security_context, key="DisplayName")
     classes = get_entities("Class", security_context)
 
     # Load Journal Entries CSV to post + Convert to QB format
-    journals = load_journal_entries(config, accounts, classes, customers)
+    journals = load_journal_entries(config, accounts, classes, customers, vendors)
 
     # Post the journal entries to Quickbooks
     post_journal_entries(journals, security_context)
