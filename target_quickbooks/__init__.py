@@ -157,7 +157,7 @@ def get_entities(entity_type, security_context, key="Name", fallback_key="Name",
     return entities
 
 
-def load_journal_entries(config, accounts, classes, customers, vendors):
+def load_journal_entries(config, accounts, classes, customers, vendors, departments):
     # Get input path
     input_path = f"{config['input_path']}/JournalEntries.csv"
     # Read the passed CSV
@@ -198,6 +198,17 @@ def load_journal_entries(config, accounts, classes, customers, vendors):
             else:
                 errored = True
                 logger.error(f"Account is missing on Journal Entry {je_id}! Name={acct_name} No={acct_num}")
+
+            department = row.get("Department")
+            location = row.get("Location")
+            if not (pd.isna(department) and pd.isna(location)):
+                dept_ref = departments.get(department, departments.get(location)).get("Id")
+                if dept_ref is not None:
+                    je_detail["DepartmentRef"] = {
+                        "value": dept_ref
+                    }
+                else:
+                    logger.warning(f"No department(location) for Journal Entry {je_id}.")
 
             # Get the Quickbooks Class Ref
             class_name = row['Class']
@@ -367,9 +378,10 @@ def upload_journals(config, security_context):
     customers = get_entities("Customer", security_context, key="DisplayName")
     vendors = get_entities("Vendor", security_context, key="DisplayName")
     classes = get_entities("Class", security_context)
+    departments = get_entities("Department", security_context)
 
     # Load Journal Entries CSV to post + Convert to QB format
-    journals = load_journal_entries(config, accounts, classes, customers, vendors)
+    journals = load_journal_entries(config, accounts, classes, customers, vendors, departments)
 
     # Post the journal entries to Quickbooks
     post_journal_entries(journals, security_context)
