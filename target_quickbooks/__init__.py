@@ -370,6 +370,7 @@ def post_journal_entries(journals, security_context):
         logger.info("Deleting any posted journal entries...")
         response = make_batch_request(url, access_token, batch_requests)
         logger.debug(json.dumps(response))
+        raise Exception("Failed to post the Journal Entries")
 
 
 def upload_journals(config, security_context):
