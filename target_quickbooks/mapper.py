@@ -179,7 +179,11 @@ def invoice_line(record, items, products, tax_codes=None):
     total_discount = 0
 
     for item in items:
-        product = products[item.get("productName")]
+        if not item.get("productName"):
+            raise Exception(f"productName is empty, please review the payload")
+        product = products.get(item.get("productName"))
+        if not product:
+            raise Exception(f"{item.get('productName')} is not a valid product in this Quickbooks company.")
         product_id = product["Id"]
 
         item_line_detail = {
@@ -528,7 +532,11 @@ def credit_line(items, products, tax_codes=None):
         items = json.loads(items)
 
     for item in items:
-        product = products[item.get("productName")]
+        if not item.get("productName"):
+            raise Exception(f"productName is empty, please review the payload")
+        product = products.get(item.get("productName"))
+        if not product:
+            raise Exception(f"{item.get('productName')} is not a valid product in this Quickbooks company.")
         product_id = product["Id"]
 
         item_line_detail = {
