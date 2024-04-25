@@ -158,6 +158,8 @@ def get_entities(entity_type, security_context, key="Name", fallback_key="Name",
 
 
 def load_journal_entries(config, accounts, classes, customers, vendors, departments):
+    # initialize error to save error reasons
+    error = {}
     # Get input path
     input_path = f"{config['input_path']}/JournalEntries.csv"
     # Read the passed CSV
@@ -197,7 +199,8 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
                 }
             else:
                 errored = True
-                logger.error(f"Account is missing on Journal Entry {je_id}! Name={acct_name} No={acct_num}")
+                error[je_id] = f"Account is missing or was not found on Journal Entry {je_id}! Name={acct_name} No={acct_num}"
+                logger.error(f"Account is missing or was not found on Journal Entry {je_id}! Name={acct_name} No={acct_num}")
 
             department = row.get("Department")
             location = row.get("Location")
@@ -276,8 +279,8 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
     # Build the entries
     df.groupby("Journal Entry Id").apply(build_lines)
 
-    if errored:
-        raise Exception("Building QBO JournalEntries failed!")
+    if errored or error:
+        raise Exception(f"Building QBO JournalEntries failed! due to {error or ''}")
 
     # Print journal entries
     logger.info(f"Loaded {len(journal_entries)} journal entries to post")
