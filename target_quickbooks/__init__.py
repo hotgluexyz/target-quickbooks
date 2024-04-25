@@ -199,8 +199,8 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
                 }
             else:
                 errored = True
-                error[je_id] = f"Account is missing on Journal Entry {je_id}! Name={acct_name} No={acct_num}"
-                logger.error(f"Account is missing on Journal Entry {je_id}! Name={acct_name} No={acct_num}")
+                error[je_id] = f"Account is missing or was not found on Journal Entry {je_id}! Name={acct_name} No={acct_num}"
+                logger.error(f"Account is missing or was not found on Journal Entry {je_id}! Name={acct_name} No={acct_num}")
 
             department = row.get("Department")
             location = row.get("Location")
