@@ -8,9 +8,13 @@ import base64
 import pandas as pd
 import logging
 import re
+import backoff
 
 logger = logging.getLogger("target-quickbooks")
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+class RetriableAPIError(Exception):
+    pass
 
 def load_json(path):
     with open(path) as f:
@@ -98,6 +102,16 @@ def login(config, config_path):
 
     return security_context
 
+@backoff.on_exception(backoff.expo, RetriableAPIError, max_tries=5)
+def get_request(url, headers):
+    r = requests.get(url, headers=headers)
+    if r.status_code == 200:
+        return r
+    elif r.status_code in [503, 429]:
+        raise RetriableAPIError(f"request failed with status code {r.status_code} retrying request")
+    else:
+        raise Exception(f"Request to {url} has failed with response {r.text}")
+
 
 def get_entities(entity_type, security_context, key="Name", fallback_key="Name", check_active=True):
     base_url = security_context['base_url']
@@ -115,11 +129,13 @@ def get_entities(entity_type, security_context, key="Name", fallback_key="Name",
 
         logger.info(f"Fetch {entity_type}; url={url}; query {query}")
 
-        r = requests.get(url, headers={
+        headers={
             'Accept': 'application/json',
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + access_token
-        })
+        }
+
+        r = get_request(url, headers)
 
         response = r.json()
 
