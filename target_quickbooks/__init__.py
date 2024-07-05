@@ -171,9 +171,36 @@ def get_entities(entity_type, security_context, key="Name", fallback_key="Name",
     logger.debug(f"[get_entities]: Found {len(entities)} {entity_type}.")
 
     return entities
+def search_journal(search_term,security_context, search_key = "DocNumber",entity_type="JournalEntry"):
+    base_url = security_context['base_url']
+    access_token = security_context['access_token']
+    query = f"select * from {entity_type}"
+    query = query + f" where {search_key} = '{search_term}'"
+    logger.info(f"Searching {entity_type}; query {query}")
+    url = f"{base_url}/query?query={query}&minorversion=45"
+    headers={
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + access_token
+        }
 
+    r = get_request(url, headers)
 
-def load_journal_entries(config, accounts, classes, customers, vendors, departments):
+    response = r.json()
+    # Establish number of records returned.
+    count = response['QueryResponse'].get('maxResults')
+    # No results - exit loop.
+    if not count or count == 0:
+        return []
+    # Parse the results
+    records = response['QueryResponse'][entity_type]
+
+    if not records:
+        records = []
+    
+    return records
+
+def load_journal_entries(config, accounts, classes, customers, vendors, departments,security_context):
     # initialize error to save error reasons
     error = {}
     # Get input path
@@ -283,6 +310,11 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
             'DocNumber': je_id,
             'Line': line_items
         }
+        journal_search = search_journal(je_id, security_context)
+        if journal_search and len(journal_search) > 0:
+            entry['Id'] = journal_search[0]['Id']
+            entry['SyncToken'] = journal_search[0]['SyncToken']
+
 
         # Append the currency if provided
         if row.get('Currency') is not None:
@@ -340,10 +372,11 @@ def post_journal_entries(journals, security_context):
     batch_requests = []
 
     for i, entity in enumerate(journals):
+        operation = "update" if entity.get("Id") is not None else "create"
         batch_requests.append(
             {
                 "bId": f"bid{i}",
-                "operation": "create",
+                "operation": operation,
                 "JournalEntry": entity
             }
         )
@@ -401,7 +434,7 @@ def upload_journals(config, security_context):
     departments = get_entities("Department", security_context)
 
     # Load Journal Entries CSV to post + Convert to QB format
-    journals = load_journal_entries(config, accounts, classes, customers, vendors, departments)
+    journals = load_journal_entries(config, accounts, classes, customers, vendors, departments, security_context)
 
     # Post the journal entries to Quickbooks
     post_journal_entries(journals, security_context)
