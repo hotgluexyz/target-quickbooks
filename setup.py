@@ -11,7 +11,7 @@ setup(
     classifiers=['Programming Language :: Python :: 3 :: Only'],
     py_modules=['target_quickbooks'],
     install_requires=[
-        'requests==2.20.0',
+        'requests>=2.20.0',
         'pandas==1.1.3',
         'argparse==1.4.0'
     ],
