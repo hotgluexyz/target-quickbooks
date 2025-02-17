@@ -113,6 +113,7 @@ def get_request(url, headers):
         raise Exception(f"Request to {url} has failed with response {r.text}")
 
 
+@backoff.on_exception(backoff.expo, RetriableAPIError, max_tries=5)
 def get_entities(entity_type, security_context, key="Name", fallback_key="Name", check_active=True):
     base_url = security_context['base_url']
     access_token = security_context['access_token']
@@ -138,6 +139,9 @@ def get_entities(entity_type, security_context, key="Name", fallback_key="Name",
         r = get_request(url, headers)
 
         response = r.json()
+
+        if response.get("QueryResponse") is None:
+            raise RetriableAPIError(f"Failed to get records: {r.text}")
 
         # Establish number of records returned.
         count = response['QueryResponse'].get('maxResults')
