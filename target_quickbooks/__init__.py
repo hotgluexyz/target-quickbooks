@@ -9,6 +9,8 @@ import pandas as pd
 import logging
 import re
 import backoff
+from target_quickbooks.util import save_api_usage, cleanup
+import atexit
 
 logger = logging.getLogger("target-quickbooks")
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -103,14 +105,21 @@ def login(config, config_path):
     return security_context
 
 @backoff.on_exception(backoff.expo, RetriableAPIError, max_tries=5)
-def get_request(url, headers):
+def get_request(url, headers, stream=None):
     r = requests.get(url, headers=headers)
+    save_api_usage("GET", url, None, None, r, stream)
     if r.status_code == 200:
         return r
     elif r.status_code in [503, 429]:
         raise RetriableAPIError(f"request failed with status code {r.status_code} retrying request")
     else:
         raise Exception(f"Request to {url} has failed with response {r.text}")
+    
+
+def post_request(url, headers, data, stream=None, params=None):
+    r = requests.post(url, headers=headers, data=data)
+    save_api_usage("POST", url, params, data, r, stream)
+    return r
 
 
 @backoff.on_exception(backoff.expo, RetriableAPIError, max_tries=5)
@@ -136,7 +145,7 @@ def get_entities(entity_type, security_context, key="Name", fallback_key="Name",
             'Authorization': 'Bearer ' + access_token
         }
 
-        r = get_request(url, headers)
+        r = get_request(url, headers, entity_type)
 
         response = r.json()
 
@@ -308,18 +317,15 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
     return journal_entries
 
 
-def make_batch_request(url, access_token, batch_requests):
+def make_batch_request(url, access_token, batch_requests, stream=None):
     # Send the request
-    r = requests.post(url,
-        data=json.dumps({
-            "BatchItemRequest": batch_requests
-        }),
-        headers={
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {access_token}'
-        }
-    )
+    headers={
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+    }
+
+    r = post_request(url, headers, json.dumps({"BatchItemRequest": batch_requests}), stream)
 
     response = r.json()
 
@@ -358,7 +364,7 @@ def post_journal_entries(journals, security_context):
 
     # Run all batches
     for batch in batches:
-        response_items.extend(make_batch_request(url, access_token, batch))
+        response_items.extend(make_batch_request(url, access_token, batch, "JournalEntry"))
 
     posted_journals = []
     failed = False
@@ -391,7 +397,7 @@ def post_journal_entries(journals, security_context):
 
         # Do delete batch requests
         logger.info("Deleting any posted journal entries...")
-        response = make_batch_request(url, access_token, batch_requests)
+        response = make_batch_request(url, access_token, batch_requests, "JournalEntry")
         logger.debug(json.dumps(response))
         raise Exception("Failed to post the Journal Entries")
 
@@ -417,14 +423,12 @@ def create_class(security_context, cl):
     url = f"{base_url}/class?minorversion=45"
 
     # Send the request
-    r = requests.post(url,
-        data=json.dumps(cl),
-        headers={
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {access_token}'
-        }
-    )
+    headers={
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+    }
+    r = post_request(url, headers, json.dumps(cl), "Class")
 
     response = r.json()
     return response
@@ -512,7 +516,7 @@ def upload_purchases(config, security_context):
         purchase = replace_ref(purchase, accounts, "AccountRef")
         
         try:
-            response = requests.post(url, data=json.dumps(purchase), headers=headers)
+            response = post_request(url, headers, json.dumps(purchase), "Purchase")
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             raise SystemExit(response.text)
@@ -534,7 +538,7 @@ def upload_customers(config, security_context):
 
     for customer in new_customers:
         try:
-            response = requests.post(url, data=json.dumps(customer), headers=headers)
+            response = post_request(url, headers, json.dumps(customer), "Customer")
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             raise SystemExit(response.text)
@@ -561,7 +565,7 @@ def upload_items(config, security_context):
         item = replace_ref(item, accounts, "AssetAccountRef")
         item = replace_ref(item, accounts, "ExpenseAccountRef")
         try:
-            response = requests.post(url, data=json.dumps(item), headers=headers)
+            response = post_request(url, headers, json.dumps(item), "Item")
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             raise SystemExit(response.text)
@@ -586,7 +590,7 @@ def upload_sales_receipt(config, security_context):
     for sales_receipt in new_sales_receipt:
         sales_receipt = replace_ref(sales_receipt, items, "ItemRef")
         try:
-            response = requests.post(url, data=json.dumps(sales_receipt), headers=headers)
+            response = post_request(url, headers, json.dumps(sales_receipt), "SalesReceipt")
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             raise SystemExit(response.text)
@@ -618,7 +622,7 @@ def upload_purchase_orders(config, security_context):
         purchase_order = replace_ref(purchase_order, customers, "CustomerRef")
         purchase_order = replace_ref(purchase_order, items, "ItemRef")
         try:
-            response = requests.post(url, data=json.dumps(purchase_order), headers=headers)
+            response = post_request(url, headers, json.dumps(purchase_order), "PurchaseOrder")
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             raise SystemExit(response.text)
@@ -628,16 +632,12 @@ def create_invoice(security_context, invoice):
     base_url = security_context['base_url']
     access_token = security_context['access_token']
     url = f"{base_url}/invoice?minorversion=45"
-
-    # Send the request
-    r = requests.post(url,
-        data=json.dumps(invoice),
-        headers={
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {access_token}'
-        }
-    )
+    headers={
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {access_token}'
+    }
+    r = post_request(url, headers, json.dumps(invoice), "Invoice")
 
     response = r.json()
     return response
@@ -747,4 +747,5 @@ def main():
 
 
 if __name__ == "__main__":
+    atexit.register(cleanup)
     main()
