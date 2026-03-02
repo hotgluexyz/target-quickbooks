@@ -13,7 +13,8 @@ setup(
     install_requires=[
         'requests>=2.20.0',
         'backoff>=1.8.0',
-        'pandas==1.1.3',
+        'numpy>=1.17.3,<2',   # pandas 1.3.5 binary built for numpy 1.x; numpy 2.x causes ABI error
+        'pandas==1.3.5',
         'argparse==1.4.0'
     ],
     entry_points='''
