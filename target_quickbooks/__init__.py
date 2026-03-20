@@ -374,7 +374,7 @@ def post_journal_entries(journals, security_context):
         if ri.get("Fault") is not None:
             m = re.search("[0-9]+$", ri.get("bId"))
             index = int(m.group(0))
-            je_docnumber = batch_requests[index].get("JournalEntry").get("DocNumber")
+            je_docnumber = batch_requests[index].get("JournalEntry").get("DocNumber") or index
             errors[je_docnumber] = ri.get("Fault").get("Error", [])
             logger.error(f"Failure creating entity error=[{json.dumps(ri)}] request=[{batch_requests[index]}]")
             failed = True
