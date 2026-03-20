@@ -308,8 +308,8 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
     # Build the entries
     df.groupby("Journal Entry Id").apply(build_lines)
 
-    if errored or error:
-        raise Exception(f"Building QBO JournalEntries failed! due to {error or ''}")
+    # if errored or error:
+    #     raise Exception(f"Building QBO JournalEntries failed! due to {error or ''}")
 
     # Print journal entries
     logger.info(f"Loaded {len(journal_entries)} journal entries to post")
@@ -369,10 +369,13 @@ def post_journal_entries(journals, security_context):
     posted_journals = []
     failed = False
 
+    errors = {}
     for ri in response_items:
         if ri.get("Fault") is not None:
             m = re.search("[0-9]+$", ri.get("bId"))
             index = int(m.group(0))
+            je_docnumber = batch_requests[index].get("JournalEntry").get("DocNumber")
+            errors[je_docnumber] = ri.get("Fault").get("Error", [])
             logger.error(f"Failure creating entity error=[{json.dumps(ri)}] request=[{batch_requests[index]}]")
             failed = True
         elif ri.get("JournalEntry") is not None:
@@ -399,7 +402,7 @@ def post_journal_entries(journals, security_context):
         logger.info("Deleting any posted journal entries...")
         response = make_batch_request(url, access_token, batch_requests, "JournalEntry")
         logger.debug(json.dumps(response))
-        raise Exception("Failed to post the Journal Entries")
+        raise Exception(f"Failed to post the Journal Entries: Error: {json.dumps(errors)}")
 
 
 def upload_journals(config, security_context):
