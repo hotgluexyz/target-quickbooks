@@ -308,8 +308,8 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
     # Build the entries
     df.groupby("Journal Entry Id").apply(build_lines)
 
-    # if errored or error:
-    #     raise Exception(f"Building QBO JournalEntries failed! due to {error or ''}")
+    if errored or error:
+        raise Exception(f"Building QBO JournalEntries failed! due to {error or ''}")
 
     # Print journal entries
     logger.info(f"Loaded {len(journal_entries)} journal entries to post")
