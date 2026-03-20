@@ -369,10 +369,13 @@ def post_journal_entries(journals, security_context):
     posted_journals = []
     failed = False
 
+    errors = {}
     for ri in response_items:
         if ri.get("Fault") is not None:
             m = re.search("[0-9]+$", ri.get("bId"))
             index = int(m.group(0))
+            je_docnumber = batch_requests[index].get("JournalEntry").get("DocNumber") or index
+            errors[je_docnumber] = ri.get("Fault").get("Error", [])
             logger.error(f"Failure creating entity error=[{json.dumps(ri)}] request=[{batch_requests[index]}]")
             failed = True
         elif ri.get("JournalEntry") is not None:
@@ -399,7 +402,7 @@ def post_journal_entries(journals, security_context):
         logger.info("Deleting any posted journal entries...")
         response = make_batch_request(url, access_token, batch_requests, "JournalEntry")
         logger.debug(json.dumps(response))
-        raise Exception("Failed to post the Journal Entries")
+        raise Exception(f"Failed to post Journal Entries: Error: {json.dumps(errors)}")
 
 
 def upload_journals(config, security_context):
