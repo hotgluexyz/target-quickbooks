@@ -402,7 +402,15 @@ def post_journal_entries(journals, security_context):
         logger.info("Deleting any posted journal entries...")
         response = make_batch_request(url, access_token, batch_requests, "JournalEntry")
         logger.debug(json.dumps(response))
-        raise Exception(f"Failed to post Journal Entries: Error: {json.dumps(errors)}")
+
+        parts = []
+        for doc, err_list in errors.items():
+            e = err_list[0]
+            t = (e.get("Detail") or "").strip()
+            parts.append(f"{doc}: {t.replace('Business Validation Error: ', '')}")
+        errors_details = " | ".join(parts)
+
+        raise Exception(f"Failed to post {len(errors)} Journal Entries: {errors_details}")
 
 
 def upload_journals(config, security_context):
