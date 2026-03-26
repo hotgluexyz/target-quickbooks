@@ -198,8 +198,8 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
     REQUIRED_COLS = ["Transaction Date", "Journal Entry Id", "Customer Name", "Class", "Account Number", "Account Name", "Posting Type", "Description"]
 
     if not all(col in cols for col in REQUIRED_COLS):
-        missing_cols = [col for col in REQUIRED_COLS if col not in cols]
-        raise Exception(f"Missing required columns in journal entries: {missing_cols}")
+        missing_cols = set(REQUIRED_COLS) - set(cols)
+        raise Exception(f"Missing required columns in journal entries: {', '.join(missing_cols)}")
 
     journal_entries = []
     errored = False
