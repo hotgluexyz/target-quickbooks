@@ -198,8 +198,8 @@ def load_journal_entries(config, accounts, classes, customers, vendors, departme
     REQUIRED_COLS = ["Transaction Date", "Journal Entry Id", "Customer Name", "Class", "Account Number", "Account Name", "Posting Type", "Description"]
 
     if not all(col in cols for col in REQUIRED_COLS):
-        logger.error(f"CSV is mising REQUIRED_COLS. Found={json.dumps(cols)}, Required={json.dumps(REQUIRED_COLS)}")
-        sys.exit(1)
+        missing_cols = [col for col in REQUIRED_COLS if col not in cols]
+        raise Exception(f"Missing required columns in journal entries: {missing_cols}")
 
     journal_entries = []
     errored = False
