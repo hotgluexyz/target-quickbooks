@@ -405,9 +405,14 @@ def post_journal_entries(journals, security_context):
 
         parts = []
         for doc, err_list in errors.items():
-            e = err_list[0]
-            t = (e.get("Detail") or "").strip()
-            parts.append(f"{doc}: {t.replace('Business Validation Error: ', '')}")
+            texts = []
+            for e in err_list or []:
+                if isinstance(e, dict):
+                    t = (e.get("Detail") or "").strip()
+                    texts.append(t.replace("Business Validation Error: ", ""))
+                else:
+                    texts.append(str(e))
+            parts.append(f"{doc}: {'; '.join(texts)}")
         errors_details = " | ".join(parts)
 
         raise Exception(f"Failed to post {len(errors)} Journal Entries: {errors_details}")
